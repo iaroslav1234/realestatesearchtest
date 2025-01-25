@@ -22,9 +22,6 @@ export async function POST(request) {
   const headers = corsHeaders();
 
   try {
-    // Log the raw request details
-    console.log('Request headers:', Object.fromEntries(request.headers));
-    
     const rawBody = await request.text();
     console.log('Raw request body:', rawBody);
 
@@ -41,12 +38,11 @@ export async function POST(request) {
 
     console.log('Parsed request body:', body);
 
-    // Try to extract query from various possible locations
-    const query = body.query || 
-                 body.parameters?.query || 
-                 body.args?.query || 
-                 body.input?.query ||
-                 body.searchQuery;
+    // Extract query from Retell AI's nested structure or direct query
+    const query = body.query || // Direct query
+                 body.args?.parameters?.query || // Retell AI structure
+                 body.parameters?.query || // Alternative structure
+                 null;
 
     console.log('Extracted query:', query);
 
@@ -55,14 +51,21 @@ export async function POST(request) {
         { 
           error: 'Query is required',
           receivedPayload: body,
-          help: 'Please include a "query" field in the request body'
+          help: 'Please include a query field in the request body or in args.parameters.query'
         }, 
         { status: 400, headers }
       );
     }
 
-    const similarity_threshold = body.similarity_threshold || 0.5;
-    const match_count = body.match_count || 5;
+    const similarity_threshold = 
+      body.similarity_threshold || 
+      body.args?.parameters?.similarity_threshold || 
+      0.5;
+    
+    const match_count = 
+      body.match_count || 
+      body.args?.parameters?.match_count || 
+      5;
 
     console.log('Processing search with parameters:', {
       query,
@@ -94,12 +97,18 @@ export async function POST(request) {
       );
     }
 
+    // Format response for Retell AI
+    const properties = data || [];
     const response = {
-      properties: data || [],
-      count: data?.length || 0,
-      query: query,
+      properties,
+      count: properties.length,
+      query,
       similarity_threshold,
-      match_count
+      match_count,
+      // Add a formatted message for Retell AI
+      message: properties.length > 0 
+        ? `Found ${properties.length} properties matching "${query}". The most relevant property is ${properties[0].title} at ${properties[0].address}.`
+        : `No properties found matching "${query}".`
     };
 
     console.log('Search response:', response);
