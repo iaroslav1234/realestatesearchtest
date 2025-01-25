@@ -19,23 +19,58 @@ export async function OPTIONS() {
 }
 
 export async function POST(request) {
-  // Add CORS headers to all responses
   const headers = corsHeaders();
 
   try {
-    const body = await request.json();
-    console.log('Received search request:', body);
-    const { query, similarity_threshold = 0.5, match_count = 5 } = body;
+    // Log the raw request details
+    console.log('Request headers:', Object.fromEntries(request.headers));
+    
+    const rawBody = await request.text();
+    console.log('Raw request body:', rawBody);
 
-    if (!query) {
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
       return NextResponse.json(
-        { error: 'Query is required' }, 
+        { error: 'Invalid JSON payload' },
         { status: 400, headers }
       );
     }
 
+    console.log('Parsed request body:', body);
+
+    // Try to extract query from various possible locations
+    const query = body.query || 
+                 body.parameters?.query || 
+                 body.args?.query || 
+                 body.input?.query ||
+                 body.searchQuery;
+
+    console.log('Extracted query:', query);
+
+    if (!query) {
+      return NextResponse.json(
+        { 
+          error: 'Query is required',
+          receivedPayload: body,
+          help: 'Please include a "query" field in the request body'
+        }, 
+        { status: 400, headers }
+      );
+    }
+
+    const similarity_threshold = body.similarity_threshold || 0.5;
+    const match_count = body.match_count || 5;
+
+    console.log('Processing search with parameters:', {
+      query,
+      similarity_threshold,
+      match_count
+    });
+
     // Generate embedding for the query
-    console.log('Generating embedding for query:', query);
     const embeddingResponse = await openai.embeddings.create({
       model: 'text-embedding-ada-002',
       input: query,
@@ -44,12 +79,7 @@ export async function POST(request) {
     const queryEmbedding = embeddingResponse.data[0].embedding;
     console.log('Generated embedding successfully');
 
-    // Call Supabase function to search for similar properties
-    console.log('Searching properties with parameters:', {
-      similarity_threshold,
-      match_count
-    });
-    
+    // Search properties
     const { data, error } = await supabase.rpc('search_properties', {
       query_embedding: queryEmbedding,
       similarity_threshold,
@@ -64,15 +94,24 @@ export async function POST(request) {
       );
     }
 
-    console.log(`Found ${data?.length || 0} matching properties`);
-    return NextResponse.json(
-      { properties: data || [], count: data?.length || 0 },
-      { headers }
-    );
+    const response = {
+      properties: data || [],
+      count: data?.length || 0,
+      query: query,
+      similarity_threshold,
+      match_count
+    };
+
+    console.log('Search response:', response);
+    return NextResponse.json(response, { headers });
+
   } catch (err) {
     console.error('Search API error:', err);
     return NextResponse.json(
-      { error: err.message }, 
+      { 
+        error: err.message,
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      }, 
       { status: 500, headers }
     );
   }
