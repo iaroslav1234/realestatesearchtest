@@ -1,26 +1,28 @@
 import { supabase, openai } from '@/supabaseClient';
 import { NextResponse } from 'next/server';
 
-export async function OPTIONS(request) {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+// Helper function for CORS headers
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { 
+    status: 200, 
+    headers: corsHeaders()
   });
 }
 
 export async function POST(request) {
-  try {
-    // Add CORS headers to the response
-    const headers = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    };
+  // Add CORS headers to all responses
+  const headers = corsHeaders();
 
+  try {
     const body = await request.json();
     console.log('Received search request:', body);
     const { query, similarity_threshold = 0.5, match_count = 5 } = body;
@@ -71,14 +73,7 @@ export async function POST(request) {
     console.error('Search API error:', err);
     return NextResponse.json(
       { error: err.message }, 
-      { 
-        status: 500,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        }
-      }
+      { status: 500, headers }
     );
   }
 }
